@@ -2,10 +2,8 @@ import { useState, useEffect, useRef } from "react";
 
 /* ══════════════════════════════════════════════════════════════
    BACKEND CONNECTION
-   Change this to your deployed Spring Boot URL once hosted
-   (e.g. "https://yasatika-backend.up.railway.app/api")
 ══════════════════════════════════════════════════════════════ */
-const API_BASE = import.meta?.env?.VITE_API_URL || "http://localhost:8080/api";
+const API_BASE = import.meta?.env?.VITE_API_URL || "https://yasatika-backend-production.up.railway.app/api";
 
 const api = {
   async get(path) {
