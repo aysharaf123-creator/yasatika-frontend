@@ -1362,31 +1362,42 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const data = await api.get("/products");
+      // Retry up to 4 times with 5s delay — handles Railway cold starts (~10-30s)
+      for (let attempt = 0; attempt < 4; attempt++) {
         if (cancelled) return;
-        const mapped = data.map(p => ({
-          id: p.id,
-          cat: (p.category || "").toLowerCase(),
-          name: p.name,
-          price: p.price,
-          badge: p.badge,
-          desc: p.description,
-          img: p.imageUrl,
-          colours: (p.colours && p.colours.length ? p.colours : ["Default"]).map(name => ({
-            name,
-            hex: COLOUR_HEX[name] || "#C9A96E",
-          })),
-          features: p.features || [],
-        }));
-        setProducts(mapped);
-        setBackendOnline(true);
-      } catch (err) {
-        console.warn("Backend unreachable, using offline fallback products:", err.message);
-        setBackendOnline(false);
-        setProducts(FALLBACK_PRODUCTS);
-      } finally {
-        if (!cancelled) setProductsLoading(false);
+        try {
+          const data = await api.get("/products");
+          if (cancelled) return;
+          const mapped = data.map(p => ({
+            id: p.id,
+            cat: (p.category || "").toLowerCase(),
+            name: p.name,
+            price: p.price,
+            badge: p.badge,
+            desc: p.description,
+            img: p.imageUrl,
+            colours: (p.colours && p.colours.length ? p.colours : ["Default"]).map(name => ({
+              name,
+              hex: COLOUR_HEX[name] || "#C9A96E",
+            })),
+            features: p.features || [],
+          }));
+          setProducts(mapped);
+          setBackendOnline(true);
+          if (!cancelled) setProductsLoading(false);
+          return;
+        } catch (err) {
+          console.warn(`Backend attempt ${attempt + 1} failed:`, err.message);
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 5000)); // wait 5s before retry
+          } else {
+            if (!cancelled) {
+              setBackendOnline(false);
+              setProducts(FALLBACK_PRODUCTS);
+              setProductsLoading(false);
+            }
+          }
+        }
       }
     })();
     return () => { cancelled = true; };
