@@ -1491,16 +1491,6 @@ export default function App() {
       {/* Toast */}
       <Toast msg={toast.msg} show={toast.show} />
 
-      {!backendOnline && !productsLoading && (
-        <div style={{
-          position:"fixed", top:61, left:0, right:0, zIndex:90,
-          background:"#FFF4E5", borderBottom:"1px solid #F0D9A8",
-          color:"#8A6D1F", fontSize:11, letterSpacing:".05em",
-          textAlign:"center", padding:"8px 16px",
-        }}>
-          ⚠ Running in demo mode — backend not connected. Orders won't be saved. Update API_BASE in the code once your Spring Boot backend is deployed.
-        </div>
-      )}
 
       {/* ══ HOME PAGE ══ */}
       {page==="home" && <>
