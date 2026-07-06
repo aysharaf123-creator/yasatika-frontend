@@ -686,28 +686,35 @@ function Toast({ msg, show }) {
 
 function ProductCard({ p, onAdd, onView }) {
   const [selColour, setSelColour] = useState(p.colours[0]);
+  const [expanded, setExpanded] = useState(false);
   return (
     <div className="prod-card">
-      <div className="prod-img" onClick={() => onView(p)}>
+      <div className="prod-img" onClick={() => setExpanded(e => !e)} style={{cursor:"pointer"}}>
         {p.badge && <div className="prod-badge">{p.badge}</div>}
         <img src={IMGS[p.img]} alt={p.name} />
       </div>
       <div className="prod-info">
         <div className="prod-cat">{p.cat === "hijab" ? "Premium Hijab" : "Anti-Tarnish Jewellery"}</div>
-        <div className="prod-name">{p.name}</div>
+        <div className="prod-name" onClick={() => onView(p)} style={{cursor:"pointer"}}>{p.name}</div>
         <div className="prod-desc">{p.desc}</div>
-        {p.colours.length > 1 && (
-          <>
+        {expanded && p.colours.length > 1 && (
+          <div style={{marginTop:8,animation:"fadeIn .2s ease"}}>
             <div className="colours">
               {p.colours.map(c => (
                 <div key={c.name} className={`swatch ${selColour.name===c.name?"sel":""}`}
                   style={{background:c.hex}}
                   title={c.name}
-                  onClick={() => { setSelColour(c); onAdd(p, c); }} />
+                  onClick={() => setSelColour(c)} />
               ))}
             </div>
             <div className="colour-name">{selColour.name}</div>
-          </>
+          </div>
+        )}
+        {!expanded && p.colours.length > 1 && (
+          <div style={{fontSize:11,color:'#C9A96E',letterSpacing:'.08em',marginTop:8,cursor:"pointer"}}
+            onClick={() => setExpanded(true)}>
+            TAP IMAGE TO SELECT COLOUR
+          </div>
         )}
         <div className="prod-footer">
           {p.cat !== "jewellery"
