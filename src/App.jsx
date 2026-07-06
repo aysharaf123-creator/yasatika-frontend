@@ -1130,86 +1130,93 @@ function ColourMatcher({ open, onClose, hijabProducts, onAdd }) {
   function handlePhoto(e) {
     const file = e.target.files[0];
     if (!file) return;
-    // Reset the input so the same file can be re-selected
     e.target.value = '';
     setUploading(true);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     const img = new Image();
-    img.onerror = () => {
-      setUploading(false);
-      alert('Could not read that image. Please try another.');
-    };
+    img.onerror = () => { setUploading(false); alert('Could not read that image. Please try another.'); };
     img.onload = () => {
       try {
-        const W = 150, H = 150;
+        const W = 220, H = 220;
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = W; canvas.height = H;
         ctx.drawImage(img, 0, 0, W, H);
         const data = ctx.getImageData(0, 0, W, H).data;
 
-        // Saturation-squared weighted hue histogram.
-        // Vibrant dress pixels (sat≈1.0, weight≈1.0) dominate over muted backgrounds
-        // (sat≈0.3, weight≈0.09) even if there are more background pixels.
-        const hueHist = new Array(36).fill(0);
-        const saturatedPixels = [];
-        // Crop to center 70% to reduce edge background
-        const cx0=Math.floor(W*0.15),cx1=Math.floor(W*0.85);
-        const cy0=Math.floor(H*0.08),cy1=Math.floor(H*0.92);
-        for (let y=cy0;y<cy1;y++) {
-          for (let x=cx0;x<cx1;x++) {
-            const i=(y*W+x)*4;
-            const pr=data[i],pg=data[i+1],pb=data[i+2];
-            const br=(pr+pg+pb)/3;
-            if(br>210||br<15) continue;         // skip white/black
-            const rn=pr/255,gn=pg/255,bn=pb/255;
-            const mx=Math.max(rn,gn,bn),mn=Math.min(rn,gn,bn),di=mx-mn;
-            const sat=mx===0?0:di/mx;
-            if(sat<0.22) continue;               // skip grey & muted backgrounds
-            const l=(mx+mn)/2;
-            if(l>0.78) continue;                 // skip washed-out highlights
-            let h=0;
-            switch(mx){case rn:h=((gn-bn)/di+6)%6;break;case gn:h=(bn-rn)/di+2;break;case bn:h=(rn-gn)/di+4;break;}
-            h=h/6*360;
-            hueHist[Math.floor(h/10)%36]+=sat*sat; // weight by sat² — vibrant wins
-            saturatedPixels.push({pr,pg,pb,h,sat,l});
+        // ── Step 1: collect qualifying pixels — skip near-white, near-black, near-grey ──
+        const pixels = [];
+        const cx0 = Math.floor(W*0.10), cx1 = Math.floor(W*0.90);
+        const cy0 = Math.floor(H*0.06), cy1 = Math.floor(H*0.94);
+        for (let y = cy0; y < cy1; y++) {
+          for (let x = cx0; x < cx1; x++) {
+            const i = (y*W+x)*4;
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const br = (r+g+b)/3;
+            if (br > 238 || br < 10) continue;
+            const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+            const sat = mx === 0 ? 0 : (mx-mn)/mx;
+            if (sat < 0.10) continue;
+            const l = (mx+mn)/2/255;
+            if (l > 0.82) continue;
+            pixels.push([r, g, b]);
+          }
+        }
+        if (pixels.length < 10) throw new Error('No colour pixels found');
+
+        // ── Step 2: k-means clustering (k=4) — finds actual colour groups ──
+        const K = 4;
+        let centroids = [0,1,2,3].map(k => [...pixels[Math.floor(k * (pixels.length-1) / (K-1))]]);
+        let assignments = new Array(pixels.length).fill(0);
+        for (let iter = 0; iter < 15; iter++) {
+          let changed = false;
+          for (let p = 0; p < pixels.length; p++) {
+            const [r,g,b] = pixels[p];
+            let best = 0, bestD = Infinity;
+            for (let k = 0; k < K; k++) {
+              const dr=r-centroids[k][0], dg=g-centroids[k][1], db=b-centroids[k][2];
+              const d = dr*dr + dg*dg + db*db;
+              if (d < bestD) { bestD = d; best = k; }
+            }
+            if (assignments[p] !== best) { assignments[p] = best; changed = true; }
+          }
+          if (!changed) break;
+          const sums = Array.from({length:K}, ()=>[0,0,0]);
+          const counts = new Array(K).fill(0);
+          for (let p = 0; p < pixels.length; p++) {
+            const k = assignments[p];
+            sums[k][0] += pixels[p][0]; sums[k][1] += pixels[p][1]; sums[k][2] += pixels[p][2];
+            counts[k]++;
+          }
+          for (let k = 0; k < K; k++) {
+            if (counts[k] > 0) centroids[k] = sums[k].map(v => v / counts[k]);
           }
         }
 
-        // Find peak bucket (smooth across neighbours)
-        let peakBucket=0, peakScore=0;
-        for(let i=0;i<36;i++){
-          const score=hueHist[i]*2+hueHist[(i+1)%36]+hueHist[(i+35)%36];
-          if(score>peakScore){peakScore=score;peakBucket=i;}
+        // ── Step 3: pick the most vibrant cluster (garment colour beats background) ──
+        const sizes = new Array(K).fill(0);
+        for (const a of assignments) sizes[a]++;
+        let bestK = 0, bestScore = -1;
+        for (let k = 0; k < K; k++) {
+          if (sizes[k] === 0) continue;
+          const [r,g,b] = centroids[k];
+          const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+          const sat = mx === 0 ? 0 : (mx-mn)/mx;
+          const sizeFrac = sizes[k] / pixels.length;
+          // High saturation wins; size is a tiebreaker via cube-root scaling
+          const score = sat * sat * Math.cbrt(sizeFrac);
+          if (score > bestScore) { bestScore = score; bestK = k; }
         }
-        const peakHue=peakBucket*10;
 
-        // Collect pixels within ±35° of dominant hue, then use IQR
-        // (25th–75th percentile by lightness) to discard dark shadows AND
-        // bright highlights — giving the true mid-tone of the garment.
-        let inRange = saturatedPixels.filter(p=>{
-          const diff=Math.min(Math.abs(p.h-peakHue),360-Math.abs(p.h-peakHue));
-          return diff<=35;
-        });
-        if(inRange.length<20) inRange=saturatedPixels; // fallback: all saturated
-        inRange.sort((a,b)=>a.l-b.l);
-        const q1=Math.floor(inRange.length*0.45), q3=Math.min(inRange.length-1,Math.floor(inRange.length*0.85));
-        const midBand = inRange.slice(q1, q3+1);
-        const src = midBand.length>0 ? midBand : inRange;
-        let r=0,g=0,b=0;
-        src.forEach(p=>{r+=p.pr;g+=p.pg;b+=p.pb;});
-        let count=src.length;
-        if(count===0){for(let i=0;i<data.length;i+=4){if((data[i]+data[i+1]+data[i+2])/3<230){r+=data[i];g+=data[i+1];b+=data[i+2];count++;}}}
-        if(count===0) throw new Error('Empty image');
-
-        const toHex=v=>Math.max(0,Math.min(255,Math.round(v/count))).toString(16).padStart(2,'0');
-        const hex='#'+toHex(r)+toHex(g)+toHex(b);
+        const [r,g,b] = centroids[bestK].map(v => Math.max(0, Math.min(255, Math.round(v))));
+        const toHex = v => v.toString(16).padStart(2, '0');
+        const hex = '#' + toHex(r) + toHex(g) + toHex(b);
         setUploading(false);
         applyColour(hex, describeColourName(hex));
-      } catch(err){
-        console.error('Colour extraction failed:',err);
+      } catch(err) {
+        console.error('Colour extraction failed:', err);
         setUploading(false);
       }
     };
