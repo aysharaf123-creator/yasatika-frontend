@@ -710,7 +710,10 @@ function ProductCard({ p, onAdd, onView }) {
           </>
         )}
         <div className="prod-footer">
-          <div className="prod-price">₹{p.price.toLocaleString()} <span>/piece</span></div>
+          {p.cat !== "jewellery"
+            ? <div className="prod-price">₹{p.price.toLocaleString()} <span>/piece</span></div>
+            : <div className="prod-price" style={{fontSize:13,letterSpacing:'.08em',color:'#8A8278'}}>Contact for price</div>
+          }
           <button className="add-btn" onClick={() => onAdd(p, selColour)}>Add to Cart</button>
         </div>
       </div>
@@ -792,7 +795,10 @@ function ProductModal({ product, open, onClose, onAdd, initialColour }) {
         <div className="modal-body">
           <div className="modal-cat">{product.cat==="hijab"?"Premium Hijab":"Anti-Tarnish Jewellery"}</div>
           <div className="modal-name">{product.name}</div>
-          <div className="modal-price">₹{product.price.toLocaleString()}</div>
+          {product.cat !== "jewellery"
+            ? <div className="modal-price">₹{product.price.toLocaleString()}</div>
+            : <div className="modal-price" style={{fontSize:15,color:'#8A8278',letterSpacing:'.05em'}}>Contact for price</div>
+          }
           <div className="modal-desc">{product.desc}</div>
           {product.colours.length > 1 && (
             <>
