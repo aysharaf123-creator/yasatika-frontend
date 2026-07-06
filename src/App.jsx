@@ -621,6 +621,7 @@ const FALLBACK_PRODUCTS = [
     price:180, badge:"Bestseller",
     desc:"Everyday georgette hijab with a soft, breathable drape. Available across our full colour range.",
     img: "hijabWomen",
+    inStock: true, unavailableColours: [],
     colours: MOJA_COLOURS,
     features:["100% Georgette","Lightweight & breathable","Full colour range","Everyday wear"],
   },
@@ -687,30 +688,60 @@ function Toast({ msg, show }) {
 function ProductCard({ p, onAdd, onView }) {
   const [selColour, setSelColour] = useState(p.colours[0]);
   const [expanded, setExpanded] = useState(false);
+  const unavail = new Set(p.unavailableColours || []);
+  const isColourUnavail = c => unavail.has(c.name);
+  const soldOut = p.inStock === false;
   return (
-    <div className="prod-card">
-      <div className="prod-img" onClick={() => setExpanded(e => !e)} style={{cursor:"pointer"}}>
-        {p.badge && <div className="prod-badge">{p.badge}</div>}
+    <div className="prod-card" style={{opacity: soldOut ? 0.82 : 1}}>
+      <div className="prod-img" onClick={() => !soldOut && setExpanded(e => !e)} style={{cursor: soldOut ? "default" : "pointer", position:"relative"}}>
+        {soldOut
+          ? <div className="prod-badge" style={{background:"#8A8278"}}>Sold Out</div>
+          : p.badge && <div className="prod-badge">{p.badge}</div>
+        }
         <img src={IMGS[p.img]} alt={p.name} />
+        {soldOut && (
+          <div style={{position:"absolute",inset:0,background:"rgba(255,255,255,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,letterSpacing:".18em",color:"#8A8278",background:"rgba(255,255,255,0.9)",padding:"8px 20px"}}>SOLD OUT</span>
+          </div>
+        )}
       </div>
       <div className="prod-info">
         <div className="prod-cat">{p.cat === "hijab" ? "Premium Hijab" : "Anti-Tarnish Jewellery"}</div>
         <div className="prod-name" onClick={() => onView(p)} style={{cursor:"pointer"}}>{p.name}</div>
         <div className="prod-desc">{p.desc}</div>
-        {expanded && p.colours.length > 1 && (
+        {!soldOut && expanded && p.colours.length > 1 && (
           <div style={{marginTop:8,animation:"fadeIn .2s ease"}}>
             <div className="colours">
-              {p.colours.map(c => (
-                <div key={c.name} className={`swatch ${selColour.name===c.name?"sel":""}`}
-                  style={{background:c.hex}}
-                  title={c.name}
-                  onClick={() => setSelColour(c)} />
-              ))}
+              {p.colours.map(c => {
+                const unavailable = isColourUnavail(c);
+                return (
+                  <div key={c.name}
+                    className={`swatch ${selColour.name===c.name&&!unavailable?"sel":""}`}
+                    style={{
+                      background: unavailable ? "#E0D8D0" : c.hex,
+                      cursor: unavailable ? "not-allowed" : "pointer",
+                      position:"relative",
+                      opacity: unavailable ? 0.5 : 1,
+                    }}
+                    title={unavailable ? `${c.name} — Out of Stock` : c.name}
+                    onClick={() => !unavailable && setSelColour(c)}>
+                    {unavailable && (
+                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <div style={{width:"130%",height:1.5,background:"#8A8278",transform:"rotate(-45deg)",transformOrigin:"center"}}/>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="colour-name">{selColour.name}</div>
+            <div className="colour-name">
+              {isColourUnavail(selColour)
+                ? <span style={{color:"#8A8278"}}>{selColour.name} — Out of Stock</span>
+                : selColour.name}
+            </div>
           </div>
         )}
-        {!expanded && p.colours.length > 1 && (
+        {!soldOut && !expanded && p.colours.length > 1 && (
           <div style={{fontSize:11,color:'#C9A96E',letterSpacing:'.08em',marginTop:8,cursor:"pointer"}}
             onClick={() => setExpanded(true)}>
             TAP IMAGE TO SELECT COLOUR
@@ -721,7 +752,12 @@ function ProductCard({ p, onAdd, onView }) {
             ? <div className="prod-price">₹{p.price.toLocaleString()} <span>/piece</span></div>
             : <div className="prod-price" style={{fontSize:13,letterSpacing:'.08em',color:'#8A8278'}}>Contact for price</div>
           }
-          <button className="add-btn" onClick={() => onAdd(p, selColour)}>Add to Cart</button>
+          <button className="add-btn"
+            onClick={() => !soldOut && !isColourUnavail(selColour) && onAdd(p, selColour)}
+            disabled={soldOut || isColourUnavail(selColour)}
+            style={{opacity: soldOut||isColourUnavail(selColour) ? 0.4 : 1, cursor: soldOut||isColourUnavail(selColour) ? "not-allowed" : "pointer"}}>
+            {soldOut ? "Sold Out" : isColourUnavail(selColour) ? "Out of Stock" : "Add to Cart"}
+          </button>
         </div>
       </div>
     </div>
@@ -894,11 +930,13 @@ function CheckoutModal({ open, cart, onClose, onSuccess }) {
           quantity: i.qty,
         })),
       };
-      const order = await api.post("/orders/guest", orderPayload);
+      // 8-second timeout — if Railway is cold-starting, don't block the customer
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000));
+      const order = await Promise.race([api.post("/orders/guest", orderPayload), timeout]);
       orderId = order.id;
     } catch (err) {
       console.warn("Could not save order to backend:", err.message);
-      setErrorMsg("⚠ Order could not be saved to our system — please make sure the backend is running. You can still send via WhatsApp.");
+      // Always proceed to WhatsApp even if backend fails or times out
     }
 
     setPlacing(false);
@@ -1396,6 +1434,8 @@ export default function App() {
             badge: p.badge,
             desc: p.description,
             img: p.imageUrl,
+            inStock: p.inStock !== false,
+            unavailableColours: p.unavailableColours || [],
             colours: (p.colours && p.colours.length ? p.colours : ["Default"]).map(name => ({
               name,
               hex: COLOUR_HEX[name] || "#C9A96E",
