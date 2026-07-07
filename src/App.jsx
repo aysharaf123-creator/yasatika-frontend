@@ -1233,18 +1233,24 @@ function ColourMatcher({ open, onClose, hijabProducts, onAdd }) {
           }
         }
 
-        // ── Step 3: pick the most vibrant cluster (garment colour beats background) ──
+        // ── Step 3: pick the dominant cluster — large clusters win, saturation breaks ties ──
         const sizes = new Array(K).fill(0);
         for (const a of assignments) sizes[a]++;
+
+        // Ignore tiny clusters (< 8% of pixels) — they're accessories/shadows, not the garment
+        const minSize = pixels.length * 0.08;
+        const validKs = [0,1,2,3].filter(k => sizes[k] >= minSize);
+        const candidates = validKs.length > 0 ? validKs : [0,1,2,3];
+
         let bestK = 0, bestScore = -1;
-        for (let k = 0; k < K; k++) {
+        for (const k of candidates) {
           if (sizes[k] === 0) continue;
           const [r,g,b] = centroids[k];
           const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
           const sat = mx === 0 ? 0 : (mx-mn)/mx;
           const sizeFrac = sizes[k] / pixels.length;
-          // High saturation wins; size is a tiebreaker via cube-root scaling
-          const score = sat * sat * Math.cbrt(sizeFrac);
+          // Linear: large cluster * moderate saturation beats small cluster * high saturation
+          const score = sat * sizeFrac;
           if (score > bestScore) { bestScore = score; bestK = k; }
         }
 
