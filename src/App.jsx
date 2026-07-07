@@ -1198,7 +1198,7 @@ function ColourMatcher({ open, onClose, hijabProducts, onAdd }) {
             const sat = mx === 0 ? 0 : (mx-mn)/mx;
             if (sat < 0.10) continue;
             const l = (mx+mn)/2/255;
-            if (l > 0.82) continue;
+            if (l > 0.92) continue;
             pixels.push([r, g, b]);
           }
         }
@@ -1242,16 +1242,13 @@ function ColourMatcher({ open, onClose, hijabProducts, onAdd }) {
         const validKs = [0,1,2,3].filter(k => sizes[k] >= minSize);
         const candidates = validKs.length > 0 ? validKs : [0,1,2,3];
 
-        let bestK = 0, bestScore = -1;
+        // Pick the LARGEST cluster — the main garment fabric always covers the most pixels.
+        // Saturation-based scoring lets small vivid accessories (embroidery, buttons) hijack the result.
+        let bestK = candidates[0];
+        let bestSize = -1;
         for (const k of candidates) {
           if (sizes[k] === 0) continue;
-          const [r,g,b] = centroids[k];
-          const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
-          const sat = mx === 0 ? 0 : (mx-mn)/mx;
-          const sizeFrac = sizes[k] / pixels.length;
-          // Linear: large cluster * moderate saturation beats small cluster * high saturation
-          const score = sat * sizeFrac;
-          if (score > bestScore) { bestScore = score; bestK = k; }
+          if (sizes[k] > bestSize) { bestSize = sizes[k]; bestK = k; }
         }
 
         const [r,g,b] = centroids[bestK].map(v => Math.max(0, Math.min(255, Math.round(v))));
